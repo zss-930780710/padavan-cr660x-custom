@@ -2,6 +2,11 @@ name: Build Padavan CR660x Custom v3
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-padavan-cr660x.yml'
   watch:
     types: [started]
 
