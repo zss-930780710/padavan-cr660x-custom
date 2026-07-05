@@ -1,4 +1,4 @@
-name: Build Padavan CR660x Custom
+name: Build Padavan CR660x Custom v3
 
 on:
   workflow_dispatch:
@@ -7,7 +7,6 @@ on:
 
 env:
   TNAME: CR660x
-  KERNEL: "3.4"
 
 jobs:
   build:
@@ -38,264 +37,262 @@ jobs:
       run: |
         cd /opt/rt-n56u/trunk
         mkdir -p user/go2rtc
-        wget -q -O user/go2rtc/go2rtc "https://github.com/AlexxIT/go2rtc/releases/latest/download/go2rtc_linux_mipsel"
+        wget -q -O user/go2rtc/go2rtc "https://github.com/AlexxIT/go2rtc/releases/download/v1.9.14/go2rtc_linux_mipsel"
         chmod +x user/go2rtc/go2rtc
-        echo "go2rtc binary size: $(du -h user/go2rtc/go2rtc | cut -f1)"
+        echo "=== go2rtc binary info ==="
+        du -h user/go2rtc/go2rtc
         file user/go2rtc/go2rtc
 
-    - name: Create go2rtc package
+    - name: Create go2rtc package files
       run: |
         cd /opt/rt-n56u/trunk/user/go2rtc
 
-        # --- go2rtc.yaml default config ---
+        # --- go2rtc.yaml: default config ---
         cat > go2rtc.yaml << 'YAMLEOF'
-        api:
-          listen: ":1984"
-        rtsp:
-          listen: ":554"
-        webrtc:
-          listen: ":8555"
-        hls:
-          listen: ":8083"
-        mjpeg:
-          listen: ":8080"
-        log:
-          level: info
-          exec: none
-        streams:
-          # Add your camera streams here:
-          # camera1:
-          #   - rtsp://admin:password@192.168.1.201:554/stream1
-        YAMLEOF
+api:
+  listen: ":1984"
+rtsp:
+  listen: ":554"
+webrtc:
+  listen: ":8555"
+hls:
+  listen: ":8083"
+log:
+  level: info
+  exec: none
+streams:
+  # Add your camera RTSP streams here:
+  # camera1: rtsp://admin:password@192.168.1.201:554/stream1
+YAMLEOF
 
         # --- go2rtc_setup.sh: first-boot auto-config ---
         cat > go2rtc_setup.sh << 'SCRIPTEOF'
-        #!/bin/sh
-        # go2rtc first-boot setup and auto-start
-        GO2RTC_DIR=/etc/storage/go2rtc
-        STARTED=/etc/storage/started_script.sh
+#!/bin/sh
+# go2rtc first-boot setup and auto-start
+GO2RTC_DIR=/etc/storage/go2rtc
+STARTED=/etc/storage/started_script.sh
 
-        mkdir -p $GO2RTC_DIR
+mkdir -p $GO2RTC_DIR
 
-        # Copy default config if not exists
-        if [ ! -f $GO2RTC_DIR/go2rtc.yaml ]; then
-            cp /etc/go2rtc.yaml $GO2RTC_DIR/go2rtc.yaml
-        fi
+# Copy default config if not exists
+if [ ! -f $GO2RTC_DIR/go2rtc.yaml ]; then
+    cp /etc/go2rtc.yaml $GO2RTC_DIR/go2rtc.yaml
+fi
 
-        # Create start script
-        if [ ! -f $GO2RTC_DIR/start.sh ]; then
-            echo '#!/bin/sh' > $GO2RTC_DIR/start.sh
-            echo 'killall go2rtc 2>/dev/null' >> $GO2RTC_DIR/start.sh
-            echo 'sleep 1' >> $GO2RTC_DIR/start.sh
-            echo '/usr/bin/go2rtc -config /etc/storage/go2rtc/go2rtc.yaml > /tmp/go2rtc.log 2>&1 &' >> $GO2RTC_DIR/start.sh
-            chmod +x $GO2RTC_DIR/start.sh
-        fi
+# Create start script if not exists (use printf to avoid nested heredoc issues)
+if [ ! -f $GO2RTC_DIR/start.sh ]; then
+    printf '#!/bin/sh\nkillall go2rtc 2>/dev/null\nsleep 1\n/usr/bin/go2rtc -config /etc/storage/go2rtc/go2rtc.yaml > /tmp/go2rtc.log 2>&1 &\n' > $GO2RTC_DIR/start.sh
+    chmod +x $GO2RTC_DIR/start.sh
+fi
 
-        # Add to started_script.sh if not present
-        if ! grep -q "go2rtc" $STARTED 2>/dev/null; then
-            echo "" >> $STARTED
-            echo "# go2rtc auto-start" >> $STARTED
-            echo "sleep 8 && sh /etc/storage/go2rtc/start.sh" >> $STARTED
-            chmod +x $STARTED
-            /sbin/mtd_storage.sh save 2>/dev/null
-        fi
+# Add to started_script.sh if not present
+if ! grep -q "go2rtc" $STARTED 2>/dev/null; then
+    echo "" >> $STARTED
+    echo "# go2rtc auto-start" >> $STARTED
+    echo "sleep 8 && sh /etc/storage/go2rtc/start.sh" >> $STARTED
+    chmod +x $STARTED
+    /sbin/mtd_storage.sh save 2>/dev/null
+fi
 
-        # Start go2rtc now
-        sleep 5
-        sh $GO2RTC_DIR/start.sh
-        SCRIPTEOF
+# Start go2rtc now
+sleep 5
+sh $GO2RTC_DIR/start.sh
+SCRIPTEOF
         chmod +x go2rtc_setup.sh
 
-        # --- Makefile (uses printf -- to handle -include prefix) ---
-        # Use -include so clean phase doesn't fail when options.mak doesn't exist yet
-        # Add all/clean targets since build system runs those too
-        # NOTE: printf -- is needed because -include starts with - and would be parsed as an option
-        printf -- '-include ../options.mak\n\nall:\n\t@echo "go2rtc: nothing to build (pre-compiled binary)"\n\nclean:\n\t@echo "go2rtc: nothing to clean"\n\nromfs:\n\t@echo ">>> Installing go2rtc to romfs..."\n\tmkdir -p $(ROMFSDIR)/usr/bin\n\tcp go2rtc $(ROMFSDIR)/usr/bin/go2rtc\n\tchmod 755 $(ROMFSDIR)/usr/bin/go2rtc\n\tmkdir -p $(ROMFSDIR)/etc\n\tcp go2rtc.yaml $(ROMFSDIR)/etc/go2rtc.yaml\n\tmkdir -p $(ROMFSDIR)/usr/sbin\n\tcp go2rtc_setup.sh $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\tchmod 755 $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\t@echo ">>> go2rtc installed successfully"\n' > Makefile
+        # --- Makefile: use printf -- (proven in build #5) ---
+        # printf -- ensures -include is not parsed as -i option
+        # \t ensures real tabs for Makefile recipes
+        printf -- '-include ../options.mak\n\nall:\n\t@echo "go2rtc: nothing to build"\n\nclean:\n\t@echo "go2rtc: nothing to clean"\n\nromfs:\n\t@echo ">>> Installing go2rtc to romfs..."\n\tmkdir -p $(ROMFSDIR)/usr/bin\n\tcp go2rtc $(ROMFSDIR)/usr/bin/go2rtc\n\tchmod 755 $(ROMFSDIR)/usr/bin/go2rtc\n\tmkdir -p $(ROMFSDIR)/etc\n\tcp go2rtc.yaml $(ROMFSDIR)/etc/go2rtc.yaml\n\tmkdir -p $(ROMFSDIR)/usr/sbin\n\tcp go2rtc_setup.sh $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\tchmod 755 $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\t@echo ">>> go2rtc installed successfully"\n' > Makefile
 
-        echo "=== go2rtc package created ==="
+        echo "=== go2rtc package files ==="
         ls -la
-        echo "=== Makefile content ==="
-        cat -A Makefile | head -20
+        echo "=== Makefile content (cat -A shows tabs as ^I) ==="
+        cat -A Makefile
 
     - name: Add go2rtc to user Makefile
       run: |
         cd /opt/rt-n56u/trunk/user
-        echo "=== user/Makefile (before, key lines) ==="
+        echo "=== user/Makefile dir_y lines (before) ==="
         grep -n "dir_y" Makefile | head -20
-        # Padavan user/Makefile uses dir_y variable (NOT SUBDIRS!)
-        # SUBDIRS is a kernel kbuild reserved variable - using it breaks busybox build
-        if ! grep -q "go2rtc" Makefile 2>/dev/null; then
-          echo "Adding go2rtc to dir_y..."
-          # Insert after the scripts line (last unconditional dir_y entry)
-          sed -i '/dir_y.*+= scripts/a dir_y\t\t\t\t\t\t+= go2rtc' Makefile
+
+        # Padavan uses dir_y variable (NOT SUBDIRS - that breaks busybox kbuild)
+        if ! grep -q "go2rtc" Makefile; then
+            # Insert after the 'scripts' line
+            sed -i '/dir_y.*+= scripts/a dir_y\t\t\t\t\t\t+= go2rtc' Makefile
+            # Verify it was added
+            if ! grep -q "go2rtc" Makefile; then
+                echo "dir_y				+= go2rtc" >> Makefile
+            fi
         fi
-        echo "=== user/Makefile (after) ==="
+
+        echo "=== user/Makefile dir_y lines (after) ==="
         grep -n "go2rtc\|dir_y" Makefile | tail -10
-        # Verify no SUBDIRS was accidentally created
+
+        # Safety check: ensure no SUBDIRS variable was created
         if grep -q "^SUBDIRS" Makefile; then
-          echo "ERROR: SUBDIRS variable found! Removing it..."
-          sed -i '/^SUBDIRS/d' Makefile
+            echo "ERROR: SUBDIRS variable found! Removing..."
+            sed -i '/^SUBDIRS/d' Makefile
         fi
 
-    - name: Create merge directory for custom files
+    - name: Create merge directory for custom init script
       run: |
         cd /opt/rt-n56u/trunk
-        # Padavan build system merges trunk/merge/<PRODUCT_ID>/ into romfs during build
-        # We use a generic approach: create files in merge/ that will be overlaid
-        MERGE_DIR="merge"
-        mkdir -p "$MERGE_DIR"
+        # Padavan build system merges trunk/merge/ into romfs during build
+        mkdir -p merge/etc/init.d
 
-        # --- Create post-boot optimization script ---
-        # This goes into /etc/storage/ via the go2rtc_setup mechanism
-        # We'll create a custom init script that runs on first boot
-        mkdir -p "$MERGE_DIR/etc/init.d"
-        cat > "$MERGE_DIR/etc/init.d/S99custom" << 'INITEOF'
-        #!/bin/sh
-        # Custom post-boot optimization for CR660x
-        # Runs once on first boot, then creates a flag file
+        cat > merge/etc/init.d/S99custom << 'INITEOF'
+#!/bin/sh
+# Custom post-boot optimization for CR660x (TR608)
+# Runs on every boot
 
-        FLAG=/etc/storage/.optimized
-        if [ -f "$FLAG" ]; then
-          # Still apply runtime optimizations every boot
-          echo 262144 > /proc/sys/net/core/rmem_max 2>/dev/null
-          echo 262144 > /proc/sys/net/core/wmem_max 2>/dev/null
-          echo 1 > /proc/sys/net/ipv4/tcp_fastopen 2>/dev/null
-          echo 1 > /proc/sys/net/ipv4/tcp_low_latency 2>/dev/null
-          echo 0 > /proc/sys/net/ipv4/conf/all/accept_redirects 2>/dev/null
-          echo 0 > /proc/sys/net/ipv4/conf/all/send_redirects 2>/dev/null
-          # SFE acceleration
-          echo 1 > /sys/fast_classifier/defrag 2>/dev/null
-          # Start go2rtc
-          sleep 5 && /usr/sbin/go2rtc_setup.sh &
-          exit 0
-        fi
+# Network buffer optimization for stable speed
+echo 262144 > /proc/sys/net/core/rmem_max 2>/dev/null
+echo 262144 > /proc/sys/net/core/wmem_max 2>/dev/null
+echo 16384 > /proc/sys/net/core/rmem_default 2>/dev/null
+echo 16384 > /proc/sys/net/core/wmem_default 2>/dev/null
 
-        # --- First boot: full optimization ---
+# TCP optimization
+echo 1 > /proc/sys/net/ipv4/tcp_fastopen 2>/dev/null
+echo 30 > /proc/sys/net/ipv4/tcp_fin_timeout 2>/dev/null
+echo 4096 > /proc/sys/net/ipv4/tcp_max_syn_backlog 2>/dev/null
+echo 0 > /proc/sys/net/ipv4/conf/all/accept_redirects 2>/dev/null
+echo 0 > /proc/sys/net/ipv4/conf/all/send_redirects 2>/dev/null
 
-        # Network buffer sizes
-        echo 262144 > /proc/sys/net/core/rmem_max
-        echo 262144 > /proc/sys/net/core/wmem_max
-        echo 16384 > /proc/sys/net/core/rmem_default
-        echo 16384 > /proc/sys/net/core/wmem_default
-        echo 4096 > /proc/sys/net/core/netdev_max_backlog
+# Wireless repeater optimization (apcli0) - only if interface exists
+if [ -d /sys/class/net/apcli0 ]; then
+    iwpriv apcli0 set LongRetryLimit=8 2>/dev/null
+    iwpriv apcli0 set ShortRetryLimit=7 2>/dev/null
+    iwpriv apcli0 set TxPower=100 2>/dev/null
+    iwpriv apcli0 set BGProtection=0 2>/dev/null
+fi
 
-        # TCP optimization
-        echo 1 > /proc/sys/net/ipv4/tcp_fastopen
-        echo 1 > /proc/sys/net/ipv4/tcp_low_latency
-        echo 3 > /proc/sys/net/ipv4/tcp_keepalive_probes
-        echo 30 > /proc/sys/net/ipv4/tcp_fin_timeout
-        echo 4096 > /proc/sys/net/ipv4/tcp_max_syn_backlog
+# SFE hardware acceleration
+lsmod | grep -q fast_classifier || insmod /lib/modules/*/kernel/net/shortcut-fe/shortcut-fe-cm.ko 2>/dev/null
+lsmod | grep -q fast_classifier || insmod /lib/modules/*/kernel/net/shortcut-fe/fast-classifier.ko 2>/dev/null
+echo 1 > /sys/fast_classifier/defrag 2>/dev/null
 
-        # Disable unnecessary kernel features
-        echo 0 > /proc/sys/net/ipv4/conf/all/accept_redirects
-        echo 0 > /proc/sys/net/ipv4/conf/all/send_redirects
-        echo 0 > /proc/sys/net/ipv4/conf/all/accept_source_route
+# Start go2rtc after network is up
+sleep 10 && /usr/sbin/go2rtc_setup.sh &
+INITEOF
+        chmod +x merge/etc/init.d/S99custom
 
-        # Wireless repeater optimization (apcli0)
-        if [ -d /sys/class/net/apcli0 ]; then
-          iwpriv apcli0 set LongRetryLimit=8 2>/dev/null
-          iwpriv apcli0 set ShortRetryLimit=7 2>/dev/null
-          iwpriv apcli0 set TxPower=100 2>/dev/null
-          iwpriv apcli0 set BGProtection=0 2>/dev/null
-        fi
+        echo "=== Merge directory contents ==="
+        find merge -type f -ls
 
-        # SFE hardware acceleration
-        lsmod | grep -q fast_classifier || insmod /lib/modules/*/kernel/net/shortcut-fe/shortcut-fe-cm.ko 2>/dev/null
-        lsmod | grep -q fast_classifier || insmod /lib/modules/*/kernel/net/shortcut-fe/fast-classifier.ko 2>/dev/null
-        echo 1 > /sys/fast_classifier/defrag 2>/dev/null
-
-        # Memory optimization
-        echo 3 > /proc/sys/vm/drop_caches 2>/dev/null
-        echo 10 > /proc/sys/vm/swappiness 2>/dev/null
-
-        # go2rtc auto-start
-        sleep 8 && /usr/sbin/go2rtc_setup.sh &
-
-        # Mark as optimized
-        touch "$FLAG"
-        /sbin/mtd_storage.sh save 2>/dev/null
-
-        echo "First-boot optimization complete."
-        INITEOF
-        chmod +x "$MERGE_DIR/etc/init.d/S99custom"
-
-        echo "=== Merge directory created ==="
-        find "$MERGE_DIR" -type f -ls
-
-    - name: Configure firmware (minimal & optimized)
+    - name: Configure firmware (minimal in-place changes)
       run: |
         cd /opt/rt-n56u/trunk
+        # CRITICAL: Start with ORIGINAL CR660x.config as-is
+        # DO NOT delete lines or rewrite from scratch - that causes duplicate entries!
         cp -f configs/templates/$TNAME.config .config
 
-        # =====================================================
-        # Remove ALL plugin configs (will re-add only essential)
-        # =====================================================
-        for plugin in MENTOHUST SCUTCLIENT SHADOWSOCKS SSSERVER SSOBFS DNSFORWARDER \
-          ADBYBY FRPC FRPS TUNSAFE ALIDDNS SMARTDNS SMARTDNSBIN SRELAY V2RAY TROJAN \
-          KOOLPROXY CADDY CADDYBIN ADGUARDHOME WYY WYYBIN ZEROTIER XRAY DDNSTO ALDRIVER \
-          OPENVPN SSWAN XUPNPD MINIDLNA FIREFLY TRANSMISSION TRANSMISSION_WEB_CONTROL \
-          ARIA ARIA_WEB_CONTROL DOGCOM NAPT66 SOFTETHERVPN_SERVER SOFTETHERVPN_CLIENT \
-          SOFTETHERVPN_CMD DUMP1090 RTL_SDR VLMCSD SMBD SMBD36 TCPDUMP SFTP OPENSSH \
-          DROPBEAR NTFS_3G GDUT_DRCOM MINIEAP NJIT_CLIENT LRZSZ FFMPEG_NEW EAP_PEAP \
-          OPENSSL_EXE; do
-          sed -i "/CONFIG_FIRMWARE_INCLUDE_${plugin}/d" .config
-        done
+        echo "============================================"
+        echo "=== Original config: plugins enabled (=y) ==="
+        echo "============================================"
+        grep "CONFIG_FIRMWARE_INCLUDE.*=y" .config | sort
 
         # =====================================================
-        # DISABLE: All unnecessary plugins (save memory)
+        # MINIMAL CHANGES: Only change specific =y to =n
+        # Each sed -i only affects lines that match exactly
+        # Lines that don't match are silently ignored (safe)
         # =====================================================
-        for plugin in MENTOHUST SCUTCLIENT GDUT_DRCOM DOGCOM MINIEAP NJIT_CLIENT NAPT66 \
-          SHADOWSOCKS SSSERVER SSOBFS V2RAY TROJAN XRAY DNSFORWARDER ADBYBY KOOLPROXY \
-          ADGUARDHOME CADDY CADDYBIN WYY WYYBIN ZEROTIER DDNSTO ALDRIVER FRPC FRPS \
-          TUNSAFE ALIDDNS SRELAY OPENVPN SSWAN SOFTETHERVPN_SERVER SOFTETHERVPN_CLIENT \
-          SOFTETHERVPN_CMD XUPNPD MINIDLNA FIREFLY TRANSMISSION TRANSMISSION_WEB_CONTROL \
-          ARIA ARIA_WEB_CONTROL DUMP1090 RTL_SDR NTFS_3G SMBD SMBD36 TCPDUMP SFTP \
-          DROPBEAR LRZSZ FFMPEG_NEW; do
-          echo "CONFIG_FIRMWARE_INCLUDE_${plugin}=n" >> .config
-        done
+
+        echo ""
+        echo "=== Disabling unused plugins ==="
+
+        # --- Heavy plugins (big memory savings) ---
+
+        # OpenVPN (~1.6MB with openssl) - not needed for home router
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENVPN=y/CONFIG_FIRMWARE_INCLUDE_OPENVPN=n/' .config
+        echo "  [OFF] OpenVPN - saves ~1.6MB"
+
+        # SMBD36 Samba server (~1.5MB) - no USB, no file sharing
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD36=y/CONFIG_FIRMWARE_INCLUDE_SMBD36=n/' .config
+        echo "  [OFF] SMBD36 (Samba) - saves ~1.5MB"
+
+        # TCPDUMP (~0.6MB) - network capture, not needed daily
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TCPDUMP=y/CONFIG_FIRMWARE_INCLUDE_TCPDUMP=n/' .config
+        echo "  [OFF] TCPDUMP - saves ~0.6MB"
+
+        # --- Medium plugins ---
+
+        # XUPNPD IPTV (~0.3MB) - not needed
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_XUPNPD=y/CONFIG_FIRMWARE_INCLUDE_XUPNPD=n/' .config
+        echo "  [OFF] XUPNPD (IPTV) - saves ~0.3MB"
+
+        # OPENSSL_EXE (~0.4MB) - openssl binary, not needed without OpenVPN
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=n/' .config
+        echo "  [OFF] OPENSSL_EXE - saves ~0.4MB"
+
+        # --- Small plugins ---
+
+        # FFMPEG_NEW (~0.1MB) - only for minidlna/firefly (already off)
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW=y/CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW=n/' .config
+        echo "  [OFF] FFMPEG_NEW - saves ~0.1MB"
+
+        # DOGCOM (~0.1MB) - campus network auth, not needed
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_DOGCOM=y/CONFIG_FIRMWARE_INCLUDE_DOGCOM=n/' .config
+        echo "  [OFF] DOGCOM - saves ~0.1MB"
+
+        # VLMCSD (~0.1MB) - KMS activation, not needed
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_VLMCSD=y/CONFIG_FIRMWARE_INCLUDE_VLMCSD=n/' .config
+        echo "  [OFF] VLMCSD (KMS) - saves ~0.1MB"
+
+        # NAPT66 (~0.05MB) - IPv6 NAT, not needed
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_NAPT66=y/CONFIG_FIRMWARE_INCLUDE_NAPT66=n/' .config
+        echo "  [OFF] NAPT66 (IPv6 NAT) - saves ~0.05MB"
+
+        # SFTP (~0.06MB, requires openssl) - not critical
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SFTP=y/CONFIG_FIRMWARE_INCLUDE_SFTP=n/' .config
+        echo "  [OFF] SFTP - saves ~0.06MB"
+
+        # OPENSSL_EC (~0.1MB) - EC curves, not needed without OpenVPN/SFTP
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=y/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=n/' .config
+        echo "  [OFF] OPENSSL_EC - saves ~0.1MB"
+
+        # IPERF3 (~0.1MB) - network test tool, not needed daily
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_IPERF3=y/CONFIG_FIRMWARE_INCLUDE_IPERF3=n/' .config
+        echo "  [OFF] IPERF3 - saves ~0.1MB"
+
+        # SOCAT (~0.1MB) - network utility, not needed
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOCAT=y/CONFIG_FIRMWARE_INCLUDE_SOCAT=n/' .config
+        echo "  [OFF] SOCAT - saves ~0.1MB"
+
+        # --- Enable QoS for traffic shaping (speed stability) ---
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_QOS=n/CONFIG_FIRMWARE_INCLUDE_QOS=y/' .config
+        echo "  [ON]  QoS - for speed stability"
 
         # =====================================================
-        # ENABLE: Essential plugins only
+        # KEEP these plugins enabled (do NOT disable):
+        # - SFE: hardware acceleration (essential for speed)
+        # - WIFI_DRIVER 7.3.0.1: wireless driver (essential for apcli0)
+        # - IPV6: IPv6 support (ISP compatibility)
+        # - IPSET: firewall rules support
+        # - LANG_CN: Chinese WebUI
+        # - EAP_PEAP: enterprise WiFi auth
+        # - OPENSSH: SSH access for management
+        # - CURL: HTTP client
+        # - TTYD: web terminal
+        # - HTOP/NANO/MTR: small useful tools
+        # - QOS: traffic shaping (just enabled)
         # =====================================================
-        echo "CONFIG_FIRMWARE_INCLUDE_OPENSSH=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_TTYD=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_HTOP=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_NANO=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_IPERF3=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_MTR=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_SOCAT=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_CURL=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_VLMCSD=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_SMARTDNS=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_SMARTDNSBIN=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_EAP_PEAP=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y" >> .config
 
-        # =====================================================
-        # Performance optimizations
-        # =====================================================
-        echo "CONFIG_FIRMWARE_INCLUDE_SFE=y" >> .config
-        echo "CONFIG_FIRMWARE_ENABLE_USB=n" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_QOS=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_IPSET=y" >> .config
-        echo "CONFIG_FIRMWARE_ENABLE_IPV6=y" >> .config
+        echo ""
+        echo "============================================"
+        echo "=== Changed entries (diff from original) ==="
+        echo "============================================"
+        diff configs/templates/$TNAME.config .config || true
 
-        # Disable unnecessary filesystems (no USB on CR660x)
-        for fs in UFSD FAT EXFAT EXT2 EXT3 EXT4 XFS FUSE SWAP; do
-          echo "CONFIG_FIRMWARE_ENABLE_${fs}=n" >> .config
-        done
+        echo ""
+        echo "============================================"
+        echo "=== Final config: plugins still enabled (=y) ==="
+        echo "============================================"
+        grep "CONFIG_FIRMWARE_INCLUDE.*=y" .config | sort
 
-        # Disable unnecessary kernel modules
-        for mod in UVC HID SERIAL AUDIO XFRM IMQ IFB NFSD NFSC CIFS; do
-          echo "CONFIG_FIRMWARE_INCLUDE_${mod}=n" >> .config
-        done
-
-        # Build optimization
-        echo "CONFIG_FIRMWARE_INCLUDE_LANG_CN=y" >> .config
-        echo "CONFIG_FIRMWARE_INCLUDE_LANG_EN=y" >> .config
-
-        echo "=== Final .config (key entries) ==="
-        grep -E "CONFIG_FIRMWARE_INCLUDE|CONFIG_FIRMWARE_ENABLE" .config | sort
+        echo ""
+        echo "=== Wireless config (must be intact) ==="
+        grep -E "CONFIG_FIRMWARE_WIFI|CONFIG_FIRMWARE_ENABLE_IPV6|CONFIG_FIRMWARE_INCLUDE_SFE|CONFIG_FIRMWARE_INCLUDE_EAP" .config
 
     - name: Build firmware
       run: |
@@ -303,20 +300,21 @@ jobs:
         sudo ./clear_tree
         sudo fakeroot ./build_firmware_modify $TNAME 0
         sudo mv -f images/*.trx /opt/images/
+        echo "=== Firmware built ==="
         ls -lh /opt/images/
 
     - name: Upload firmware
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: Padavan-CR660x-Custom
+        name: Padavan-CR660x-Custom-v3
         path: /opt/images
 
     - name: Upload build log on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: build-log
+        name: build-log-v3
         path: |
           /opt/rt-n56u/trunk/images/
           /opt/rt-n56u/trunk/.config
