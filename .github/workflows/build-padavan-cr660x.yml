@@ -344,6 +344,9 @@ jobs:
     - name: Build firmware
       run: |
         cd /opt/rt-n56u/trunk
+        # Create .config from modified template BEFORE clear_tree
+        # (clear_tree checks for .config existence and fails if missing)
+        cp -f configs/templates/$TNAME.config .config
         sudo ./clear_tree
         sudo fakeroot ./build_firmware_modify $TNAME 0
 
