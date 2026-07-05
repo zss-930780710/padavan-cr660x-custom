@@ -124,7 +124,7 @@ SCRIPTEOF
             sed -i '/dir_y.*+= scripts/a dir_y\t\t\t\t\t\t+= go2rtc' Makefile
             # Verify it was added
             if ! grep -q "go2rtc" Makefile; then
-                echo "dir_y				+= go2rtc" >> Makefile
+                printf 'dir_y\t\t\t\t\t\t+= go2rtc\n' >> Makefile
             fi
         fi
 
