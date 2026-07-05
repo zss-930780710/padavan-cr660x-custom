@@ -106,10 +106,11 @@ jobs:
         SCRIPTEOF
         chmod +x go2rtc_setup.sh
 
-        # --- Makefile (uses printf to ensure TAB characters) ---
+        # --- Makefile (uses printf -- to handle -include prefix) ---
         # Use -include so clean phase doesn't fail when options.mak doesn't exist yet
         # Add all/clean targets since build system runs those too
-        printf '-include ../options.mak\n\nall:\n\t@echo "go2rtc: nothing to build (pre-compiled binary)"\n\nclean:\n\t@echo "go2rtc: nothing to clean"\n\nromfs:\n\t@echo ">>> Installing go2rtc to romfs..."\n\tmkdir -p $(ROMFSDIR)/usr/bin\n\tcp go2rtc $(ROMFSDIR)/usr/bin/go2rtc\n\tchmod 755 $(ROMFSDIR)/usr/bin/go2rtc\n\tmkdir -p $(ROMFSDIR)/etc\n\tcp go2rtc.yaml $(ROMFSDIR)/etc/go2rtc.yaml\n\tmkdir -p $(ROMFSDIR)/usr/sbin\n\tcp go2rtc_setup.sh $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\tchmod 755 $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\t@echo ">>> go2rtc installed successfully"\n' > Makefile
+        # NOTE: printf -- is needed because -include starts with - and would be parsed as an option
+        printf -- '-include ../options.mak\n\nall:\n\t@echo "go2rtc: nothing to build (pre-compiled binary)"\n\nclean:\n\t@echo "go2rtc: nothing to clean"\n\nromfs:\n\t@echo ">>> Installing go2rtc to romfs..."\n\tmkdir -p $(ROMFSDIR)/usr/bin\n\tcp go2rtc $(ROMFSDIR)/usr/bin/go2rtc\n\tchmod 755 $(ROMFSDIR)/usr/bin/go2rtc\n\tmkdir -p $(ROMFSDIR)/etc\n\tcp go2rtc.yaml $(ROMFSDIR)/etc/go2rtc.yaml\n\tmkdir -p $(ROMFSDIR)/usr/sbin\n\tcp go2rtc_setup.sh $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\tchmod 755 $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\t@echo ">>> go2rtc installed successfully"\n' > Makefile
 
         echo "=== go2rtc package created ==="
         ls -la
