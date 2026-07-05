@@ -1,4 +1,4 @@
-name: Build Padavan CR660x Custom v4
+name: Build Padavan CR660x Custom v5
 
 on:
   workflow_dispatch:
@@ -34,6 +34,85 @@ jobs:
         sh dl_toolchain.sh
         mkdir -p /opt/images/
 
+    - name: CRITICAL FIX - Modify config TEMPLATE (not .config!)
+      run: |
+        cd /opt/rt-n56u/trunk
+        # ====================================================================
+        # ROOT CAUSE FIX: build_firmware_modify does:
+        #   cp -f configs/templates/$TNAME.config .config
+        # at the very start, OVERWRITING any changes to .config!
+        # All previous sed changes to .config were silently lost.
+        # FIX: Modify the TEMPLATE file directly so the changes survive.
+        # ====================================================================
+
+        CONFIG_FILE="configs/templates/$TNAME.config"
+
+        echo "============================================"
+        echo "=== Original template: plugins enabled (=y) ==="
+        echo "============================================"
+        grep "CONFIG_FIRMWARE_INCLUDE.*=y" $CONFIG_FILE | sort
+
+        # === Disable unused plugins (sed -i on the TEMPLATE file) ===
+
+        # OpenVPN + crypto stack (~2.5MB)
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENVPN=y/CONFIG_FIRMWARE_INCLUDE_OPENVPN=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=y/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SFTP=y/CONFIG_FIRMWARE_INCLUDE_SFTP=n/' $CONFIG_FILE
+
+        # Samba (~1.5MB) - no USB on CR660x
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD36=y/CONFIG_FIRMWARE_INCLUDE_SMBD36=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD=y/CONFIG_FIRMWARE_INCLUDE_SMBD=n/' $CONFIG_FILE
+
+        # TCPDUMP (~0.6MB)
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TCPDUMP=y/CONFIG_FIRMWARE_INCLUDE_TCPDUMP=n/' $CONFIG_FILE
+
+        # XUPNPD (IPTV)
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_XUPNPD=y/CONFIG_FIRMWARE_INCLUDE_XUPNPD=n/' $CONFIG_FILE
+
+        # FFMPEG
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW=y/CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW=n/' $CONFIG_FILE
+
+        # Campus auth / DOGCOM
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_DOGCOM=y/CONFIG_FIRMWARE_INCLUDE_DOGCOM=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_MENTOHUST=y/CONFIG_FIRMWARE_INCLUDE_MENTOHUST=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SCUTCLIENT=y/CONFIG_FIRMWARE_INCLUDE_SCUTCLIENT=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_GDUT_DRCOM=y/CONFIG_FIRMWARE_INCLUDE_GDUT_DRCOM=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_MINIEAP=y/CONFIG_FIRMWARE_INCLUDE_MINIEAP=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_NJIT_CLIENT=y/CONFIG_FIRMWARE_INCLUDE_NJIT_CLIENT=n/' $CONFIG_FILE
+
+        # Misc
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_VLMCSD=y/CONFIG_FIRMWARE_INCLUDE_VLMCSD=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_NAPT66=y/CONFIG_FIRMWARE_INCLUDE_NAPT66=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_IPERF3=y/CONFIG_FIRMWARE_INCLUDE_IPERF3=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOCAT=y/CONFIG_FIRMWARE_INCLUDE_SOCAT=n/' $CONFIG_FILE
+
+        # Proxy/VPN (most already =n in CR660x, but be thorough)
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=y/CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SSSERVER=y/CONFIG_FIRMWARE_INCLUDE_SSSERVER=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_V2RAY=y/CONFIG_FIRMWARE_INCLUDE_V2RAY=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TROJAN=y/CONFIG_FIRMWARE_INCLUDE_TROJAN=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_XRAY=y/CONFIG_FIRMWARE_INCLUDE_XRAY=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FRPC=y/CONFIG_FIRMWARE_INCLUDE_FRPC=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FRPS=y/CONFIG_FIRMWARE_INCLUDE_FRPS=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ZEROTIER=y/CONFIG_FIRMWARE_INCLUDE_ZEROTIER=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_SERVER=y/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_SERVER=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CLIENT=y/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CLIENT=n/' $CONFIG_FILE
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CMD=y/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CMD=n/' $CONFIG_FILE
+
+        # Enable QoS
+        sed -i 's/CONFIG_FIRMWARE_INCLUDE_QOS=n/CONFIG_FIRMWARE_INCLUDE_QOS=y/' $CONFIG_FILE
+
+        echo ""
+        echo "============================================"
+        echo "=== Modified template: plugins still enabled (=y) ==="
+        echo "============================================"
+        grep "CONFIG_FIRMWARE_INCLUDE.*=y" $CONFIG_FILE | sort
+
+        echo ""
+        echo "=== Wireless config (must be intact) ==="
+        grep -E "CONFIG_FIRMWARE_WIFI|CONFIG_FIRMWARE_ENABLE_IPV6|CONFIG_FIRMWARE_INCLUDE_SFE|CONFIG_FIRMWARE_INCLUDE_EAP" $CONFIG_FILE
+
     - name: Download go2rtc binary
       run: |
         cd /opt/rt-n56u/trunk
@@ -47,7 +126,6 @@ jobs:
       run: |
         cd /opt/rt-n56u/trunk/user/go2rtc
 
-        # --- go2rtc.yaml default config ---
         cat > go2rtc.yaml << 'YAMLEOF'
         api:
           listen: ":1984"
@@ -68,7 +146,6 @@ jobs:
           #   - rtsp://admin:password@192.168.1.201:554/stream1
         YAMLEOF
 
-        # --- go2rtc_setup.sh: first-boot auto-config ---
         cat > go2rtc_setup.sh << 'SCRIPTEOF'
         #!/bin/sh
         # go2rtc first-boot setup and auto-start
@@ -77,12 +154,10 @@ jobs:
 
         mkdir -p $GO2RTC_DIR
 
-        # Copy default config if not exists
         if [ ! -f $GO2RTC_DIR/go2rtc.yaml ]; then
             cp /etc/go2rtc.yaml $GO2RTC_DIR/go2rtc.yaml
         fi
 
-        # Create start script
         if [ ! -f $GO2RTC_DIR/start.sh ]; then
             echo '#!/bin/sh' > $GO2RTC_DIR/start.sh
             echo 'killall go2rtc 2>/dev/null' >> $GO2RTC_DIR/start.sh
@@ -91,7 +166,6 @@ jobs:
             chmod +x $GO2RTC_DIR/start.sh
         fi
 
-        # Add to started_script.sh if not present
         if ! grep -q "go2rtc" $STARTED 2>/dev/null; then
             echo "" >> $STARTED
             echo "# go2rtc auto-start" >> $STARTED
@@ -100,48 +174,29 @@ jobs:
             /sbin/mtd_storage.sh save 2>/dev/null
         fi
 
-        # Start go2rtc now
         sleep 5
         sh $GO2RTC_DIR/start.sh
         SCRIPTEOF
         chmod +x go2rtc_setup.sh
 
-        # --- Makefile (uses printf -- to handle -include prefix) ---
         printf -- '-include ../options.mak\n\nall:\n\t@echo "go2rtc: nothing to build (pre-compiled binary)"\n\nclean:\n\t@echo "go2rtc: nothing to clean"\n\nromfs:\n\t@echo ">>> Installing go2rtc to romfs..."\n\tmkdir -p $(ROMFSDIR)/usr/bin\n\tcp go2rtc $(ROMFSDIR)/usr/bin/go2rtc\n\tchmod 755 $(ROMFSDIR)/usr/bin/go2rtc\n\tmkdir -p $(ROMFSDIR)/etc\n\tcp go2rtc.yaml $(ROMFSDIR)/etc/go2rtc.yaml\n\tmkdir -p $(ROMFSDIR)/usr/sbin\n\tcp go2rtc_setup.sh $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\tchmod 755 $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\t@echo ">>> go2rtc installed successfully"\n' > Makefile
 
         echo "=== go2rtc package created ==="
         ls -la
-        echo "=== Makefile content ==="
-        cat -A Makefile | head -20
 
-    - name: Add go2rtc to user Makefile
+    - name: CRITICAL FIX - Create custom-perf package (NOT merge/ directory!)
       run: |
         cd /opt/rt-n56u/trunk/user
-        echo "=== user/Makefile (before, key lines) ==="
-        grep -n "dir_y" Makefile | head -20
-        # Padavan user/Makefile uses dir_y variable (NOT SUBDIRS!)
-        # SUBDIRS is a kernel kbuild reserved variable - using it breaks busybox build
-        if ! grep -q "go2rtc" Makefile 2>/dev/null; then
-          echo "Adding go2rtc to dir_y..."
-          # Insert after the scripts line (last unconditional dir_y entry)
-          sed -i '/dir_y.*+= scripts/a dir_y += go2rtc' Makefile
-        fi
-        echo "=== user/Makefile (after) ==="
-        grep -n "go2rtc\|dir_y" Makefile | tail -10
-        # Verify no SUBDIRS was accidentally created
-        if grep -q "^SUBDIRS" Makefile; then
-          echo "ERROR: SUBDIRS variable found! Removing it..."
-          sed -i '/^SUBDIRS/d' Makefile
-        fi
+        mkdir -p custom-perf
 
-    - name: Create merge directory for performance optimization
-      run: |
-        cd /opt/rt-n56u/trunk
-        # Padavan build system merges trunk/merge/ into romfs during build
-        mkdir -p merge/etc/init.d
+        # ==================================================================
+        # ROOT CAUSE FIX: Padavan build system does NOT support merge/ dir!
+        # The S99custom script was created in merge/etc/init.d/ but never
+        # copied to romfs. FIX: Use a proper user package with Makefile,
+        # same approach as go2rtc.
+        # ==================================================================
 
-        # --- Maximum performance init script ---
-        cat > merge/etc/init.d/S99custom << 'INITEOF'
+        cat > custom-perf/S99custom << 'INITEOF'
         #!/bin/sh
         # ==============================================
         # Maximum Performance Optimization for CR660x/TR608
@@ -149,7 +204,6 @@ jobs:
         # ==============================================
 
         # === 1. CPU GOVERNOR -> PERFORMANCE ===
-        # Forces CPU to always run at maximum frequency
         for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
           [ -f "$cpu" ] && echo performance > "$cpu" 2>/dev/null
         done
@@ -157,8 +211,8 @@ jobs:
           [ -f "$cpu" ] && cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq > "$cpu" 2>/dev/null
         done
 
-        # === 2. CPU OVERCLOCK ATTEMPT (880MHz -> 1000MHz) ===
-        # Crash-safe: uses flag files. If router hangs, it reboots and disables OC.
+        # === 2. CPU OVERCLOCK (880MHz -> 1000MHz) ===
+        # Crash-safe: flag files prevent boot loop if OC causes hang
         OC_TRYING=/etc/storage/.oc_trying
         OC_DONE=/etc/storage/.oc_done
         OC_CRASHED=/etc/storage/.oc_crashed
@@ -168,13 +222,11 @@ jobs:
         elif [ -f "$OC_DONE" ]; then
           echo "[OC] Active (1000MHz)"
         elif [ -f "$OC_TRYING" ]; then
-          # Was trying but crashed - mark as crashed
           rm -f "$OC_TRYING"
           touch "$OC_CRASHED"
           /sbin/mtd_storage.sh save 2>/dev/null
           echo "[OC] Previous attempt crashed. Disabled."
         else
-          # First attempt - try overclock
           DEVMEM=""
           [ -x /sbin/devmem ] && DEVMEM=/sbin/devmem
           [ -x /usr/bin/devmem ] && DEVMEM=/usr/bin/devmem
@@ -183,15 +235,11 @@ jobs:
             /sbin/mtd_storage.sh save 2>/dev/null
             sync
             sleep 1
-            # Read CLKCFG0 register (0x1E00002C)
-            # Bit[10:8]=CPU_CLK_SEL: 0=880MHz, 1=1000MHz
             CUR=$($DEVMEM 0x1E00002C 2>/dev/null)
             if [ -n "$CUR" ]; then
               echo "[OC] Current CLKCFG0=$CUR, attempting 1000MHz..."
-              # Set bit[10:8]=001 for 1000MHz
               NEW=$(( CUR | (1 << 8) ))
               $DEVMEM 0x1E00002C 32 $NEW 2>/dev/null
-              # If we reach here, overclock didn't crash
               rm -f "$OC_TRYING"
               touch "$OC_DONE"
               /sbin/mtd_storage.sh save 2>/dev/null
@@ -203,7 +251,6 @@ jobs:
         fi
 
         # === 3. NETWORK BUFFER OPTIMIZATION ===
-        # Maximize socket buffers for throughput
         echo 1048576 > /proc/sys/net/core/rmem_max 2>/dev/null
         echo 1048576 > /proc/sys/net/core/wmem_max 2>/dev/null
         echo 65536 > /proc/sys/net/core/rmem_default 2>/dev/null
@@ -236,7 +283,6 @@ jobs:
           echo "[WiFi] apcli0 repeater optimized"
         fi
 
-        # Optimize main WiFi interfaces too
         for iface in ra0 rai0; do
           if [ -d /sys/class/net/$iface ]; then
             iwpriv $iface set TxPower=100 2>/dev/null
@@ -247,22 +293,19 @@ jobs:
         done
 
         # === 6. SFE HARDWARE ACCELERATION ===
-        # Shortcut Forward Engine - critical for wire-speed routing
         lsmod | grep -q fast_classifier || insmod /lib/modules/*/kernel/net/shortcut-fe/shortcut-fe-cm.ko 2>/dev/null
         lsmod | grep -q fast_classifier || insmod /lib/modules/*/kernel/net/shortcut-fe/fast-classifier.ko 2>/dev/null
         echo 1 > /sys/fast_classifier/defrag 2>/dev/null
         echo "[SFE] Hardware acceleration enabled"
 
         # === 7. MEMORY OPTIMIZATION ===
-        # Reduce cache pressure - more RAM for applications
         echo 50 > /proc/sys/vm/vfs_cache_pressure 2>/dev/null
         echo 5 > /proc/sys/vm/dirty_ratio 2>/dev/null
         echo 1 > /proc/sys/vm/dirty_background_ratio 2>/dev/null
         echo 8192 > /proc/sys/vm/min_free_kbytes 2>/dev/null
         echo 10 > /proc/sys/vm/swappiness 2>/dev/null
 
-        # === 8. TIMER & SCHEDULER OPTIMIZATION ===
-        # Reduce timer ticks for less CPU overhead
+        # === 8. TIMER & SCHEDULER ===
         echo 1 > /proc/sys/kernel/watchdog 2>/dev/null
         echo 500 > /proc/sys/kernel/sched_migration_cost_ns 2>/dev/null
 
@@ -271,183 +314,82 @@ jobs:
 
         echo "=== Optimization complete ==="
         INITEOF
-        chmod +x merge/etc/init.d/S99custom
+        chmod +x custom-perf/S99custom
 
-        echo "=== Merge directory created ==="
-        find merge -type f -ls
+        printf -- '-include ../options.mak\n\nall:\n\t@echo "custom-perf: nothing to build"\n\nclean:\n\t@echo "custom-perf: nothing to clean"\n\nromfs:\n\t@echo ">>> Installing S99custom to romfs..."\n\tmkdir -p $(ROMFSDIR)/etc/init.d\n\tcp S99custom $(ROMFSDIR)/etc/init.d/S99custom\n\tchmod 755 $(ROMFSDIR)/etc/init.d/S99custom\n\t@echo ">>> S99custom installed successfully"\n' > custom-perf/Makefile
 
-    - name: Configure firmware (minimal in-place changes)
+        echo "=== custom-perf package created ==="
+        ls -la custom-perf/
+        echo "=== Makefile content ==="
+        cat -A custom-perf/Makefile
+
+    - name: Add go2rtc and custom-perf to user Makefile
       run: |
-        cd /opt/rt-n56u/trunk
-        # CRITICAL: Start with ORIGINAL CR660x.config - NO deletion, NO re-addition
-        # Only use sed -i to change =y to =n for plugins we want to disable
-        cp -f configs/templates/$TNAME.config .config
+        cd /opt/rt-n56u/trunk/user
+        echo "=== user/Makefile (before) ==="
+        grep -n "dir_y" Makefile | head -20
 
-        echo "============================================"
-        echo "=== Original config: plugins enabled (=y) ==="
-        echo "============================================"
-        grep "CONFIG_FIRMWARE_INCLUDE.*=y" .config | sort
+        # Add go2rtc after scripts line
+        if ! grep -q "go2rtc" Makefile; then
+          sed -i '/dir_y.*+= scripts/a dir_y += go2rtc' Makefile
+        fi
+        # Add custom-perf after go2rtc line
+        if ! grep -q "custom-perf" Makefile; then
+          sed -i '/dir_y.*+= go2rtc/a dir_y += custom-perf' Makefile
+        fi
 
-        # =====================================================
-        # DISABLE UNUSED PLUGINS (in-place sed, safe)
-        # Each sed only changes lines that exactly match =y to =n
-        # Lines that don't match are silently ignored
-        # =====================================================
-
-        echo ""
-        echo "=== Disabling unused plugins ==="
-
-        # --- Heavy plugins (big memory savings) ---
-        # OpenVPN + crypto stack (~2.5MB total)
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENVPN=y/CONFIG_FIRMWARE_INCLUDE_OPENVPN=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=y/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EXE=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=y/CONFIG_FIRMWARE_INCLUDE_OPENSSL_EC=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SFTP=y/CONFIG_FIRMWARE_INCLUDE_SFTP=n/' .config
-        echo "  [OFF] OpenVPN + OpenSSL + SFTP - saves ~2.5MB"
-
-        # Samba file sharing (~1.5MB) - no USB on CR660x
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD36=y/CONFIG_FIRMWARE_INCLUDE_SMBD36=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMBD=y/CONFIG_FIRMWARE_INCLUDE_SMBD=n/' .config
-        echo "  [OFF] SMBD/Samba - saves ~1.5MB"
-
-        # TCPDUMP (~0.6MB) - network capture tool
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TCPDUMP=y/CONFIG_FIRMWARE_INCLUDE_TCPDUMP=n/' .config
-        echo "  [OFF] TCPDUMP - saves ~0.6MB"
-
-        # --- Medium plugins ---
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_XUPNPD=y/CONFIG_FIRMWARE_INCLUDE_XUPNPD=n/' .config
-        echo "  [OFF] XUPNPD (IPTV)"
-
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW=y/CONFIG_FIRMWARE_INCLUDE_FFMPEG_NEW=n/' .config
-        echo "  [OFF] FFMPEG_NEW"
-
-        # --- Download tools ---
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=y/CONFIG_FIRMWARE_INCLUDE_TRANSMISSION=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TRANSMISSION_WEB_CONTROL=y/CONFIG_FIRMWARE_INCLUDE_TRANSMISSION_WEB_CONTROL=n/' .config
-        echo "  [OFF] Transmission (BitTorrent)"
-
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ARIA=y/CONFIG_FIRMWARE_INCLUDE_ARIA=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ARIA_WEB_CONTROL=y/CONFIG_FIRMWARE_INCLUDE_ARIA_WEB_CONTROL=n/' .config
-        echo "  [OFF] Aria2 (download manager)"
-
-        # --- Ad blocking ---
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ADBYBY=y/CONFIG_FIRMWARE_INCLUDE_ADBYBY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_KOOLPROXY=y/CONFIG_FIRMWARE_INCLUDE_KOOLPROXY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=y/CONFIG_FIRMWARE_INCLUDE_ADGUARDHOME=n/' .config
-        echo "  [OFF] AdBlock plugins (ADBYBY/KOOLPROXY/AdGuard)"
-
-        # --- Proxy/VPN ---
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=y/CONFIG_FIRMWARE_INCLUDE_SHADOWSOCKS=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SSSERVER=y/CONFIG_FIRMWARE_INCLUDE_SSSERVER=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SSOBFS=y/CONFIG_FIRMWARE_INCLUDE_SSOBFS=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_V2RAY=y/CONFIG_FIRMWARE_INCLUDE_V2RAY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TROJAN=y/CONFIG_FIRMWARE_INCLUDE_TROJAN=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_XRAY=y/CONFIG_FIRMWARE_INCLUDE_XRAY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_TUNSAFE=y/CONFIG_FIRMWARE_INCLUDE_TUNSAFE=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SSWAN=y/CONFIG_FIRMWARE_INCLUDE_SSWAN=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FRPC=y/CONFIG_FIRMWARE_INCLUDE_FRPC=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FRPS=y/CONFIG_FIRMWARE_INCLUDE_FRPS=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ZEROTIER=y/CONFIG_FIRMWARE_INCLUDE_ZEROTIER=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_DDNSTO=y/CONFIG_FIRMWARE_INCLUDE_DDNSTO=n/' .config
-        echo "  [OFF] Proxy/VPN plugins (SS/V2Ray/Trojan/XRay/FRP/ZeroTier)"
-
-        # --- Campus network auth ---
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_MENTOHUST=y/CONFIG_FIRMWARE_INCLUDE_MENTOHUST=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SCUTCLIENT=y/CONFIG_FIRMWARE_INCLUDE_SCUTCLIENT=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_GDUT_DRCOM=y/CONFIG_FIRMWARE_INCLUDE_GDUT_DRCOM=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_MINIEAP=y/CONFIG_FIRMWARE_INCLUDE_MINIEAP=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_NJIT_CLIENT=y/CONFIG_FIRMWARE_INCLUDE_NJIT_CLIENT=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_DOGCOM=y/CONFIG_FIRMWARE_INCLUDE_DOGCOM=n/' .config
-        echo "  [OFF] Campus network auth plugins"
-
-        # --- Misc small plugins ---
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_VLMCSD=y/CONFIG_FIRMWARE_INCLUDE_VLMCSD=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_NAPT66=y/CONFIG_FIRMWARE_INCLUDE_NAPT66=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_IPERF3=y/CONFIG_FIRMWARE_INCLUDE_IPERF3=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOCAT=y/CONFIG_FIRMWARE_INCLUDE_SOCAT=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER=y/CONFIG_FIRMWARE_INCLUDE_DNSFORWARDER=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SRELAY=y/CONFIG_FIRMWARE_INCLUDE_SRELAY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_LRZSZ=y/CONFIG_FIRMWARE_INCLUDE_LRZSZ=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_CADDY=y/CONFIG_FIRMWARE_INCLUDE_CADDY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_CADDYBIN=y/CONFIG_FIRMWARE_INCLUDE_CADDYBIN=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_WYY=y/CONFIG_FIRMWARE_INCLUDE_WYY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_WYYBIN=y/CONFIG_FIRMWARE_INCLUDE_WYYBIN=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ALDRIVER=y/CONFIG_FIRMWARE_INCLUDE_ALDRIVER=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_ALIDDNS=y/CONFIG_FIRMWARE_INCLUDE_ALIDDNS=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_MINIDLNA=y/CONFIG_FIRMWARE_INCLUDE_MINIDLNA=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_FIREFLY=y/CONFIG_FIRMWARE_INCLUDE_FIREFLY=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_DUMP1090=y/CONFIG_FIRMWARE_INCLUDE_DUMP1090=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_RTL_SDR=y/CONFIG_FIRMWARE_INCLUDE_RTL_SDR=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_NTFS_3G=y/CONFIG_FIRMWARE_INCLUDE_NTFS_3G=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_DROPBEAR=y/CONFIG_FIRMWARE_INCLUDE_DROPBEAR=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMARTDNS=y/CONFIG_FIRMWARE_INCLUDE_SMARTDNS=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SMARTDNSBIN=y/CONFIG_FIRMWARE_INCLUDE_SMARTDNSBIN=n/' .config
-        echo "  [OFF] Misc plugins (VLMCSD/NAPT66/IPERF3/SOCAT/etc)"
-
-        # --- SoftEther VPN ---
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_SERVER=y/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_SERVER=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CLIENT=y/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CLIENT=n/' .config
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CMD=y/CONFIG_FIRMWARE_INCLUDE_SOFTETHERVPN_CMD=n/' .config
-        echo "  [OFF] SoftEther VPN"
-
-        # =====================================================
-        # ENABLE: QoS for traffic shaping (speed stability)
-        # =====================================================
-        sed -i 's/CONFIG_FIRMWARE_INCLUDE_QOS=n/CONFIG_FIRMWARE_INCLUDE_QOS=y/' .config
-        echo "  [ON]  QoS - traffic shaping for speed stability"
-
-        # =====================================================
-        # KEEP THESE ENABLED (do NOT disable):
-        # - SFE: hardware acceleration (essential for speed)
-        # - WIFI_DRIVER 7.3.0.1: wireless driver (essential for apcli0)
-        # - IPV6: IPv6 support (ISP compatibility)
-        # - IPSET: firewall rules support
-        # - LANG_CN: Chinese WebUI
-        # - EAP_PEAP: enterprise WiFi auth
-        # - OPENSSH: SSH access for management
-        # - CURL: HTTP client
-        # - TTYD: web terminal
-        # - HTOP/NANO/MTR: small useful tools
-        # - QOS: traffic shaping
-        # =====================================================
-
-        echo ""
-        echo "============================================"
-        echo "=== Changed entries (diff from original) ==="
-        echo "============================================"
-        diff configs/templates/$TNAME.config .config || true
-
-        echo ""
-        echo "============================================"
-        echo "=== Final config: plugins still enabled (=y) ==="
-        echo "============================================"
-        grep "CONFIG_FIRMWARE_INCLUDE.*=y" .config | sort
-
-        echo ""
-        echo "=== Wireless config (must be intact) ==="
-        grep -E "CONFIG_FIRMWARE_WIFI|CONFIG_FIRMWARE_ENABLE_IPV6|CONFIG_FIRMWARE_INCLUDE_SFE|CONFIG_FIRMWARE_INCLUDE_EAP" .config
+        echo "=== user/Makefile (after) ==="
+        grep -n "go2rtc\|custom-perf\|dir_y" Makefile | tail -15
 
     - name: Build firmware
       run: |
         cd /opt/rt-n56u/trunk
         sudo ./clear_tree
         sudo fakeroot ./build_firmware_modify $TNAME 0
+
+        # === VERIFICATION ===
+        echo ""
+        echo "======== VERIFICATION ========"
+        echo "=== Check S99custom in romfs ==="
+        ls -la romfs/etc/init.d/S99custom 2>/dev/null && echo "[OK] S99custom is in romfs" || echo "[FAIL] S99custom MISSING from romfs!"
+
+        echo "=== Check go2rtc in romfs ==="
+        ls -la romfs/usr/bin/go2rtc 2>/dev/null && echo "[OK] go2rtc binary is in romfs" || echo "[FAIL] go2rtc MISSING from romfs!"
+        ls -la romfs/usr/sbin/go2rtc_setup.sh 2>/dev/null && echo "[OK] go2rtc_setup.sh is in romfs" || echo "[FAIL] go2rtc_setup.sh MISSING!"
+
+        echo "=== Check disabled plugins NOT in romfs ==="
+        for plugin in openvpn tcpdump xupnpd vlmcsd dogcom iperf3 socat; do
+          FOUND=$(find romfs -name "*${plugin}*" 2>/dev/null | head -1)
+          if [ -n "$FOUND" ]; then
+            echo "[WARN] $plugin still in romfs: $FOUND"
+          else
+            echo "[OK] $plugin removed from romfs"
+          fi
+        done
+
+        echo "=== Check .config matches modified template ==="
+        diff configs/templates/$TNAME.config .config && echo "[OK] .config matches template" || echo "[INFO] .config differs (toolchain dir appended)"
+
+        echo "=== Final firmware ==="
         sudo mv -f images/*.trx /opt/images/
-        echo "=== Firmware built ==="
         ls -lh /opt/images/
 
     - name: Upload firmware
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: Padavan-CR660x-Custom-v4
+        name: Padavan-CR660x-Custom-v5
         path: /opt/images
 
     - name: Upload build log on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: build-log-v4
+        name: build-log-v5
         path: |
           /opt/rt-n56u/trunk/images/
           /opt/rt-n56u/trunk/.config
+          /opt/rt-n56u/trunk/configs/templates/
+          /opt/rt-n56u/trunk/user/Makefile
+          /opt/rt-n56u/trunk/user/custom-perf/
+          /opt/rt-n56u/trunk/user/go2rtc/
