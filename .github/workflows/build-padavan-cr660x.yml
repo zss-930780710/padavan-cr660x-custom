@@ -107,7 +107,9 @@ jobs:
         chmod +x go2rtc_setup.sh
 
         # --- Makefile (uses printf to ensure TAB characters) ---
-        printf 'include ../options.mak\n\nromfs:\n\t@echo ">>> Installing go2rtc to romfs..."\n\tmkdir -p $(ROMFSDIR)/usr/bin\n\tcp go2rtc $(ROMFSDIR)/usr/bin/go2rtc\n\tchmod 755 $(ROMFSDIR)/usr/bin/go2rtc\n\tmkdir -p $(ROMFSDIR)/etc\n\tcp go2rtc.yaml $(ROMFSDIR)/etc/go2rtc.yaml\n\tmkdir -p $(ROMFSDIR)/usr/sbin\n\tcp go2rtc_setup.sh $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\tchmod 755 $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\t@echo ">>> go2rtc installed successfully"\n' > Makefile
+        # Use -include so clean phase doesn't fail when options.mak doesn't exist yet
+        # Add all/clean targets since build system runs those too
+        printf '-include ../options.mak\n\nall:\n\t@echo "go2rtc: nothing to build (pre-compiled binary)"\n\nclean:\n\t@echo "go2rtc: nothing to clean"\n\nromfs:\n\t@echo ">>> Installing go2rtc to romfs..."\n\tmkdir -p $(ROMFSDIR)/usr/bin\n\tcp go2rtc $(ROMFSDIR)/usr/bin/go2rtc\n\tchmod 755 $(ROMFSDIR)/usr/bin/go2rtc\n\tmkdir -p $(ROMFSDIR)/etc\n\tcp go2rtc.yaml $(ROMFSDIR)/etc/go2rtc.yaml\n\tmkdir -p $(ROMFSDIR)/usr/sbin\n\tcp go2rtc_setup.sh $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\tchmod 755 $(ROMFSDIR)/usr/sbin/go2rtc_setup.sh\n\t@echo ">>> go2rtc installed successfully"\n' > Makefile
 
         echo "=== go2rtc package created ==="
         ls -la
@@ -117,20 +119,22 @@ jobs:
     - name: Add go2rtc to user Makefile
       run: |
         cd /opt/rt-n56u/trunk/user
-        echo "=== user/Makefile (before) ==="
-        head -30 Makefile
-        # Padavan user/Makefile uses SUBDIRS - add go2rtc
+        echo "=== user/Makefile (before, key lines) ==="
+        grep -n "dir_y" Makefile | head -20
+        # Padavan user/Makefile uses dir_y variable (NOT SUBDIRS!)
+        # SUBDIRS is a kernel kbuild reserved variable - using it breaks busybox build
         if ! grep -q "go2rtc" Makefile 2>/dev/null; then
-          echo "Adding go2rtc to SUBDIRS..."
-          sed -i '/^SUBDIRS :=/s/$/ go2rtc/' Makefile 2>/dev/null || true
-          sed -i '/^SUBDIRS =/s/$/ go2rtc/' Makefile 2>/dev/null || true
-          # If no SUBDIRS line, check if it uses obj-y or similar
-          if ! grep -q "go2rtc" Makefile; then
-            echo 'SUBDIRS += go2rtc' >> Makefile
-          fi
+          echo "Adding go2rtc to dir_y..."
+          # Insert after the scripts line (last unconditional dir_y entry)
+          sed -i '/dir_y.*+= scripts/a dir_y\t\t\t\t\t\t+= go2rtc' Makefile
         fi
         echo "=== user/Makefile (after) ==="
-        grep -n "go2rtc\|SUBDIRS" Makefile
+        grep -n "go2rtc\|dir_y" Makefile | tail -10
+        # Verify no SUBDIRS was accidentally created
+        if grep -q "^SUBDIRS" Makefile; then
+          echo "ERROR: SUBDIRS variable found! Removing it..."
+          sed -i '/^SUBDIRS/d' Makefile
+        fi
 
     - name: Create merge directory for custom files
       run: |
